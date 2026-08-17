@@ -619,60 +619,48 @@ footer .heart{color:#e0517a;}
   }
 
   /* ---------------------------------------------------------
-     5) RELIABLE "Subscribe" PIXEL TRACKING ON TELEGRAM CTAs
+     5) "Subscribe" PIXEL TRACKING ON TELEGRAM CTAs — SIMPLE
+        & RELIABLE VERSION
      ---------------------------------------------------------
-     Problem: firing fbq('track','Subscribe') inside a plain
-     onclick on an <a> tag is unreliable — the browser often
-     navigates to Telegram before the pixel request finishes
-     sending, so Meta never registers the event as "active".
+     Previous version called e.preventDefault() and delayed
+     navigation with window.location.href inside a setTimeout.
+     On several mobile browsers (notably iOS Safari) a navigation
+     triggered asynchronously like that is no longer treated as
+     a direct result of the user's tap, and gets silently
+     blocked or the whole handler can misfire — so the click
+     worked (user still reached Telegram some other way, e.g. a
+     manual tap) but the pixel event and/or navigation logic
+     never completed cleanly.
 
-     Fix: intercept the click, fire the pixel event using the
-     fbq callback / eventID pattern, and only navigate once the
-     event has had a moment to actually leave the browser
-     (either via the fbq callback firing, or a short fallback
-     timeout so the button is never stuck for the user).
+     Fix: let the <a> tag navigate completely normally (no
+     preventDefault, no delay). We just fire the pixel event
+     synchronously the instant the click happens — the browser
+     dispatches that tiny network request immediately, well
+     before it moves on to following the link, so it does not
+     get cancelled by the page unload. This is the pattern Meta
+     itself recommends and it works reliably on both desktop and
+     mobile.
      --------------------------------------------------------- */
   var ctaButtons = document.querySelectorAll("[data-tg-cta]");
+  var firedOnce = false; // avoid double counting on rapid double-taps
   ctaButtons.forEach(function(btn){
-    btn.addEventListener("click", function(e){
-      var destination = btn.getAttribute("href");
-      if(!destination) return;
+    btn.addEventListener("click", function(){
+      if (firedOnce) return;
+      firedOnce = true;
+      setTimeout(function(){ firedOnce = false; }, 1500);
 
-      // If fbq isn't loaded (blocked, ad-blocker, offline), just
-      // let the click behave normally — never trap the user.
-      if(typeof window.fbq !== "function"){
-        return;
+      if (typeof window.fbq === "function") {
+        try {
+          fbq('track', 'Subscribe', {
+            content_name: 'Telegram Channel Join',
+            content_category: 'Telegram'
+          });
+        } catch (err) {
+          // Never let a pixel error block the link from working.
+        }
       }
-
-      e.preventDefault();
-
-      var navigated = false;
-      function goNow(){
-        if(navigated) return;
-        navigated = true;
-        window.location.href = destination;
-      }
-
-      // Unique eventID avoids duplicate-counting if the user
-      // double-clicks or this fires more than once.
-      var eventID = "subscribe_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-
-      try{
-        fbq('track', 'Subscribe', {
-          content_name: 'Telegram Channel Join',
-          content_category: 'Telegram'
-        }, { eventID: eventID });
-      }catch(err){
-        // If the pixel call itself throws, don't block navigation.
-        goNow();
-        return;
-      }
-
-      // Give the pixel request a brief window to actually leave
-      // the browser before we navigate away. 300ms is enough for
-      // the network request to be dispatched (it doesn't need to
-      // complete) without feeling like a delay to the user.
-      setTimeout(goNow, 300);
+      // No preventDefault, no manual redirect — the <a href>
+      // does its normal job right after this handler returns.
     });
   });
 
