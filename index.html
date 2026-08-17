@@ -463,7 +463,7 @@ footer .heart{color:#e0517a;}
   </div>
 
   <!-- MAIN TELEGRAM CTA -->
-  <a href="https://t.me/+foGqUOlv_JxmZmNl" class="cta-main" id="mainCta" onclick="if(window.fbq){fbq('track','Subscribe');}">
+  <a href="https://t.me/+foGqUOlv_JxmZmNl" class="cta-main" id="mainCta" data-tg-cta>
     <div class="line1">✈️ JOIN TELEGRAM CHANNEL</div>
     <div class="line2">Tap Karo &amp; Abhi Join Karo</div>
   </a>
@@ -528,7 +528,7 @@ footer .heart{color:#e0517a;}
      FOOTER
      ============================================================ -->
 <footer>
-  <a href="https://t.me/+foGqUOlv_JxmZmNl" class="footer-cta" onclick="if(window.fbq){fbq('track','Subscribe');}">✈️ Join Telegram Channel Now</a>
+  <a href="https://t.me/+foGqUOlv_JxmZmNl" class="footer-cta" data-tg-cta>✈️ Join Telegram Channel Now</a>
   <p>© 2026 Gautam Jhaa</p>
   <p>Made with <span class="heart">❤️</span> for Indian Traders</p>
 </footer>
@@ -536,7 +536,7 @@ footer .heart{color:#e0517a;}
 <!-- ============================================================
      FLOATING TELEGRAM ICON (always visible, quick access)
      ============================================================ -->
-<a href="https://t.me/+foGqUOlv_JxmZmNl" class="floating-tg" aria-label="Join Telegram Channel" onclick="if(window.fbq){fbq('track','Subscribe');}">✈️</a>
+<a href="https://t.me/+foGqUOlv_JxmZmNl" class="floating-tg" aria-label="Join Telegram Channel" data-tg-cta>✈️</a>
 
 <!-- ============================================================
      VANILLA JAVASCRIPT — lightweight, no dependencies
@@ -617,6 +617,64 @@ footer .heart{color:#e0517a;}
       particleContainer.appendChild(p);
     }
   }
+
+  /* ---------------------------------------------------------
+     5) RELIABLE "Subscribe" PIXEL TRACKING ON TELEGRAM CTAs
+     ---------------------------------------------------------
+     Problem: firing fbq('track','Subscribe') inside a plain
+     onclick on an <a> tag is unreliable — the browser often
+     navigates to Telegram before the pixel request finishes
+     sending, so Meta never registers the event as "active".
+
+     Fix: intercept the click, fire the pixel event using the
+     fbq callback / eventID pattern, and only navigate once the
+     event has had a moment to actually leave the browser
+     (either via the fbq callback firing, or a short fallback
+     timeout so the button is never stuck for the user).
+     --------------------------------------------------------- */
+  var ctaButtons = document.querySelectorAll("[data-tg-cta]");
+  ctaButtons.forEach(function(btn){
+    btn.addEventListener("click", function(e){
+      var destination = btn.getAttribute("href");
+      if(!destination) return;
+
+      // If fbq isn't loaded (blocked, ad-blocker, offline), just
+      // let the click behave normally — never trap the user.
+      if(typeof window.fbq !== "function"){
+        return;
+      }
+
+      e.preventDefault();
+
+      var navigated = false;
+      function goNow(){
+        if(navigated) return;
+        navigated = true;
+        window.location.href = destination;
+      }
+
+      // Unique eventID avoids duplicate-counting if the user
+      // double-clicks or this fires more than once.
+      var eventID = "subscribe_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+
+      try{
+        fbq('track', 'Subscribe', {
+          content_name: 'Telegram Channel Join',
+          content_category: 'Telegram'
+        }, { eventID: eventID });
+      }catch(err){
+        // If the pixel call itself throws, don't block navigation.
+        goNow();
+        return;
+      }
+
+      // Give the pixel request a brief window to actually leave
+      // the browser before we navigate away. 300ms is enough for
+      // the network request to be dispatched (it doesn't need to
+      // complete) without feeling like a delay to the user.
+      setTimeout(goNow, 300);
+    });
+  });
 
 })();
 </script>
